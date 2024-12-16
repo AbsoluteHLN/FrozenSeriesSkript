@@ -1,0 +1,36 @@
+##Coded by FrozenAccess
+##Inner Version: 1.0
+
+on load:
+	console command "reconfig-nv"
+
+command /reconfig-nv:
+	permission: bukkit.command.ban
+	trigger:
+		if file "plugins/Skript/config/Frozen/FrozenConfig.yml" exists:
+        	load yaml "plugins/Skript/config/Frozen/FrozenConfig.yml" as "FrozenConfig"
+        	set {Frozen::ServerName} to yaml value "ServerName" from "FrozenConfig"
+		else:
+			load yaml "plugins/Skript/config/Frozen/FrozenConfig.yml" as "FrozenConfig"
+			set yaml value "ServerName" from "FrozenConfig" to "UnknowServer"
+			save yaml "FrozenConfig"
+		if file "plugins/Skript/config/Frozen/FrozenNV.yml" exists:
+			load yaml "plugins/Skript/config/Frozen/FrozenNV.yml" as "NVConfig"
+			set {Frozen::NV::msg::on} to yaml value "messageON" from "NVConfig"
+			set {Frozen::NV::msg::off} to yaml value "messageOFF" from "NVConfig"
+		else:
+			load yaml "plugins/Skript/config/Frozen/FrozenNV.yml" as "NVConfig"
+			set yaml value "messageON" from "NVConfig" to "奖励一块华为手表"
+			set yaml value "messageOFF" from "NVConfig" to "原神"
+			save yaml "NVConfig"
+
+command /nv:
+	trigger:
+		if {Frozen::%uuid of player%::nv} is not set:
+			set {Frozen::%uuid of player%::nv} to 1
+			apply night vision 1 without any particles to the player for 999 days
+			send message "%{Frozen::ServerName}% &b&l>>> %{Frozen::NV::msg::on}%"
+		else:
+			delete {Frozen::%uuid of player%::nv}
+			remove night vision from the player
+			send message "%{Frozen::ServerName}% &b&l>>> %{Frozen::NV::msg::off}%"

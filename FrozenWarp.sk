@@ -1,0 +1,29 @@
+##Coded by FrozenAccess
+##Inner Version: 1.1
+
+on load:
+    if file "plugins/Skript/config/Frozen/FrozenConfig.yml" exists:
+        load yaml "plugins/Skript/config/Frozen/FrozenConfig.yml" as "FrozenConfig.yml"
+        set {Frozen::ServerName} to yaml value "ServerName" from "FrozenConfig.yml"
+
+command /setwarp <text>:
+    permission: bukkit.command.ban
+    trigger:
+        load yaml "plugins/Skript/config/Frozen/Warps/%arg-1%.yml"
+        set {_loc::warp::%player%} to player's location
+        set yaml value "Location" from arg-1 to {_loc::warp::%player%}
+        save yaml arg-1
+        delete {_loc::warp::%player%}
+        send message "%{Frozen::ServerName}% &f>>> &e已设置传送点 &9&l%arg-1%" to player
+
+command /warp <text>:
+    trigger:
+        if player has permission "Frozen.warp.%arg-1%":
+            if file "plugins/Skript/config/Frozen/Warps/%arg-1%.yml" exists:
+                load yaml "plugins/Skript/config/Frozen/Warps/%arg-1%.yml"
+                set {_tp::warp::%player%} to yaml value "Location" from arg-1
+                teleport player to {_tp::warp::%player%}
+                delete {_loc::warp::%player%}
+                send message "%{Frozen::ServerName}% &f>>> &e已传送至传送点 &9&l%arg-1%" to player
+        else:
+            send message "%{Frozen::ServerName}% &f>>> &e您没有权限" to player
