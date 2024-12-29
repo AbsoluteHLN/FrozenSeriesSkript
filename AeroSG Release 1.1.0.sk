@@ -1,0 +1,374 @@
+#Coded by FrozenAccess
+#Inner Version: 2.7.3
+
+# 当前问题
+# 钓鱼得提上日程了 PERHAPS
+# Message Format
+# [If Event]分数API (perhaps in AeroMain I think)
+# Modifier API:
+# 1.Special EXP Get
+# 2.Another Loot by chance
+# 3.烟花派对
+
+# 旧用法
+on load:
+    set {FA} to "CereWinterra" parsed as a player
+
+# 玩家信息获取
+command /sginit:
+    trigger:
+        loop all players:
+            set {_playerTeam} to team of loop-player
+            set team option collision rule of {_playerTeam} to never
+            set allow friendly fire team state of {_playerTeam} to false
+            set team option name tag visibility of {_playerTeam} to always
+
+# 大Time是总时间 大Phase是总阶段数 大Size是总大小 当前地图即地图
+# phase变量即说明第几阶段 shrink变量说明是否缩圈 block变量说明缩圈格数 time变量说明缩圈时间 loot变量说明是否roll loot
+command /sgselect <text>:
+    trigger:
+        console command "sginit"
+        set {SG::localMap} to arg-1
+        load yaml "plugins/FrozenConfig/SG/%arg-1%.yml" as "sgConfig"
+        set {SG::totalTime} to yaml value "totalTime" from "sgConfig"
+        set {SG::totalPhase} to yaml value "totalPhase" from "sgConfig"
+        set {SG::totalSize} to yaml value "totalSize" from "sgConfig"
+        set {_i} to 1
+        set {_a} to 1
+        set {_b} to 1
+# 清除已有变量
+        loop 12 times:
+            delete {SG::phase::%{_i}%}
+            delete {SG::block::%{_i}%}
+            delete {SG::time::%{_i}%}
+            delete {SG::phaseType::%{_i}%}
+            add 1 to {_i}
+        set {_i} to 1
+        loop {SG::totalPhase} times:
+            set {SG::phase::%{_i}%} to yaml value "%{_i}%.point" from "sgConfig"
+# 阶段点判定和记录
+    # 缩圈和决战
+            set {SG::phaseType::%{_i}%} to yaml value "%{_i}%.type" from "sgConfig"
+            if {SG::phaseType::%{_i}%} is "Shrink":
+                set {SG::block::%{_i}%} to yaml value "%{_i}%.block" from "sgConfig"
+                set {SG::time::%{_i}%} to yaml value "%{_i}%.time" from "sgConfig"
+            else if {SG::phaseType::%{_i}%} is "Final":
+                set {SG::block::%{_i}%} to yaml value "%{_i}%.block" from "sgConfig"
+                set {SG::time::%{_i}%} to yaml value "%{_i}%.time" from "sgConfig"
+    # 哈哈 PvP和Loot被我优化了
+            add 1 to {_i}
+            
+# 削弱三叉戟
+on damage:
+    if {SG::switch} is 1:
+        if attacker's tool is trident:
+            decrease the damage by 2
+
+# 方块放置与破坏
+on break:
+    if {SG::switch} is not 0:
+        if event-block is cobweb or fire:
+            clear drops
+        else:
+            cancel event
+
+on place:
+    if {SG::switch} is not 0:
+        if event-block is not cobweb or fire:
+            cancel event
+
+# 清除空瓶子
+on right clicking holding a glass bottle:
+    if {SG::switch} is 1:
+        remove all glass bottle from player
+
+# 告示牌保护和容器阻断
+on right clicking on sign or furnace or dispenser or dropper or hopper:
+    if {SG::switch} is 1:
+        cancel event
+
+# 铁砧
+on anvil damage:
+    cancel event
+
+# 死亡处理
+on death:
+    if {SG::switch} is 1:
+        set {SG::%victim%::deathLoc} to victim's location
+# 击杀效果
+        killerEffects(attacker,victim)
+        loop all players:
+            deathEffects(loop-player,victim)
+
+on respawn:
+    if {SG::switch} is 1:
+        teleport player to {SG::%player%::deathLoc}
+        delete {SG::%player%::deathLoc}
+        wait 1 tick
+        console command "gamemode spectator %player%" 
+# 存活玩家判定
+        set {SG::aliveTeam} to checkAliveTeam()
+        set {SG::alivePlayer} to checkAlivePlayer()
+# 结束判定2
+        if {SG::aliveTeam} is 1:
+            console command "sgstop"
+
+# 玩家退出
+on quit:
+    if {SG::switch} is 1:
+        set {_jp} to player
+        if {_jp}'s gamemode is not spectator:
+            loop all players:
+                deathEffects(loop-player,{_jp})
+# 存活玩家判定 Again
+            set {SG::aliveTeam} to checkAliveTeam()
+            set {SG::alivePlayer} to checkAlivePlayer()
+# 结束判定2 Again
+            if {SG::aliveTeam} is 1:
+                console command "sgstop"
+
+# 弩箭削弱
+function checkCrossbow(p: player) returns integer:
+    set {_a} to 0
+    loop {_p}'s inventory:
+        if loop-value is crossbow:
+            add 1 to {_a}
+    return {_a}
+
+on right clicking holding a crossbow:
+    set {_canHold} to checkCrossbow(player)
+    if {_canHold} > 2:
+        cancel event
+        if {SG::%player%::timerCrossbow} is not set:
+            send message "&6[⚠] &c你至多拥有两把弩" to player
+            set {SG::%player%::timerCrossbow} to 1
+            wait 2 seconds
+            delete {SG::%player%::timerCrossbow}
+
+# switch变量为1说明正在游戏 这套系统是自动识别该节点进行何种操作
+every second in "SG":
+# Intro Play
+    if {SG::switch} is 2:
+        if {SG::localTime} is -10:
+            play sound "fx.game_intro" to all players
+        if {SG::localTime} > -11:
+            set {_color} to "&f"
+            if {SG::localTime} is -3:
+                set {_color} to "&a"
+                play sound "fx.countdown" to all players
+            if {SG::localTime} is -2:
+                set {_color} to "&6"
+                play sound "fx.countdown" to all players
+            if {SG::localTime} is -1:
+                set {_color} to "&c"
+                play sound "fx.countdown" to all players
+            set {_time} to 0 - {SG::localTime}
+            if {SG::localTime} < 0:
+                send title "&b游戏即将开始" with subtitle "%{_color}%>%{_time}%<" to all players for 1 second
+        if {SG::localTime} is 0:
+            play sound "fx.game_start" to all players
+            loop all players:
+                stateRecover(loop-player)
+            loop all blocks within location(-12,8,11,"SG") and location(11,12,-12,"SG"):
+                if loop-block is barrier:
+                    set loop-block to air
+            set {SG::localTime} to 0
+            set {SG::switch} to 1
+            apply dolphins grace 1 without particles to all players for 1000 seconds
+# 游戏进行中相关事件
+    if {SG::switch} is 1:
+        set {_i} to 1
+# 进水发光
+        loop all players:
+            if loop-player is in water:
+                apply glowing 1 without particles to loop-player for 1 second
+# 每100s播放一次SG音乐
+        set {_music} to {SG::localTime} / 100
+        if {_music} = floor({_music}):
+            play sound "music.sg_loop" to all players
+# 变更节点判定
+        loop {SG::totalPhase} times:
+            if {SG::localTime} = {SG::phase::%{_i}%}:
+                if {SG::phaseType::%{_i}%} is "Shrink":
+                    shrink world border of world "SG" by {SG::block::%{_i}%} in {SG::time::%{_i}%}*20 ticks
+    # Unimportant: 可函数化的effects
+                    play sound "fx.sg_shrink_warning" to all players
+                    send title "&c&l边界收缩！" to all players
+                    send message "&6[⚠] &c边界收缩，请注意你所在的位置" to all players
+                if {SG::phaseType::%{_i}%} is "Loot":
+                    console command "genloot"
+                    send title "&a&l所有战利箱已刷新" to all players
+                    send message "&6[⚠] &a所有战利箱已刷新" to all players
+                    play sound "minecraft:item.armor.equip_diamond" to all players
+                if {SG::phaseType::%{_i}%} is "PvP":
+                    enable PVP in "SG"
+                    send title "&c&lPvP已开启" to all players
+                    send message "&6[⚠] &cPvP已开启" to all players
+                    play sound "fx.warning_1" to all players
+                if {SG::phaseType::%{_i}%} is "Final":
+                    shrink world border of world "SG" by {SG::block::%{_i}%} in {SG::time::%{_i}%}*20 ticks
+                    play sound "fx.sg_shrink_warning" to all players
+                    send title "&c&l决战开始！" to all players
+                    set {SG::finalDuel} to 1
+                add 1 to {SG::localPhase}                
+            add 1 to {_i}
+# 下一事件判定和变量赋予
+        set {_b} to {SG::localPhase} + 1
+        if {SG::localPhase} < {SG::totalPhase}:
+            if {SG::phaseType::%{_b}%} is "PvP":
+                set {SG::nextEvent} to "PvP开启"
+            if {SG::phaseType::%{_b}%} is "Shrink":
+                set {SG::nextEvent} to "边界收缩"
+            if {SG::phaseType::%{_b}%} is "Loot":
+                set {SG::nextEvent} to "战利箱刷新"
+            if {SG::phaseType::%{_b}%} is "Final":
+                set {SG::nextEvent} to "最终决战"  
+            set {SG::timeToNext} to {SG::phase::%{_b}%} - {SG::localTime}      
+        if {SG::localPhase} = {SG::totalPhase}:
+            set {SG::nextEvent} to "游戏结束"
+            set {SG::timeToNext} to {SG::totalTime} - {SG::localTime}
+        set {SG::leftTime} to {SG::totalTime} - {SG::localTime}
+# 决战模式
+        if {SG::finalDuel} = 1:
+            if {SG::timer::finalDuel} is not set:
+                set {SG::timer::finalDuel} to 1
+            else:
+                add 1 to {SG::timer::finalDuel}
+            set {_tempTimer} to {SG::timer::finalDuel} / 9
+            if {_tempTimer} = floor({_tempTimer}):
+                remove 1 from {SG::localHealth}
+                loop all players:
+                    set loop-player's max health to {SG::localHealth}
+# 时间转换
+        set {SG::timeToNext} to timeProcess({SG::timeToNext})
+        set {SG::leftTime} to timeProcess({SG::leftTime})
+# 计分板显示
+        scoreboardDrawSG()
+# 结束判定1
+        if {SG::localTime} = {SG::totalTime}:
+            console command "sgstop"
+# 计时
+    add 1 to {SG::localTime}
+
+# 计分板函数
+function scoreboardDrawSG():
+    loop all players:
+        set title of loop-player's scoreboard to "&f---- &b&lAeroidz&e&lGames &f----"
+        set line 8 of loop-player's scoreboard to "&b&l当前游戏: &aSurvival &eGames"
+        set line 9 of loop-player's scoreboard to "&b&l地图: &6烟雨江南"
+        set line 10 of loop-player's scoreboard to "&c&l剩余时间: &f&l%{SG::leftTime}%"  
+        set line 11 of loop-player's scoreboard to "&c&l%{SG::nextEvent}%: &f&l%{SG::timeToNext}%"  
+        set line 12 of loop-player's scoreboard to "&a&l剩余玩家: &f%{SG::alivePlayer}%/24"     
+        set line 13 of loop-player's scoreboard to "&a&l剩余队伍: &f%{SG::aliveTeam}%/12"     
+    toggle scoreboards of all players on
+
+# 开启游戏
+command /sgstart:
+    trigger:
+# INITIALIZE 1
+        console command "teamglow true"
+        console command "spcldisplay HP"
+        loop all entities in "SG":
+            if loop-value is a dropped item:
+                kill the loop-value
+        loop all players:
+            stateRecover(loop-player)
+            set loop-player's gamemode to survival
+            set loop-player's level to 114
+        set {SG::switch} to 2
+        set {SG::localPhase} to 0
+# 屏障的放置
+        loop all blocks within location(-12,8,11,"SG") and location(11,12,-12,"SG"):
+            if loop-block-1 is air or fire or cobweb: 
+                set loop-block-1 to barrier
+        wait 1 tick
+        loop all blocks within location(-12,8,11,"SG") and location(11,12,-12,"SG"):
+            if loop-block-1 is wool:
+                loop blocks from the loop-block-1 to the block 2 above the loop-block-1:
+                    if loop-block-2 is barrier:
+                        set loop-block-2 to air
+        set {SG::localTime} to -15
+# INITIALIZE 2
+        set {SG::aliveTeam} to checkAliveTeam()
+        set {SG::alivePlayer} to checkAlivePlayer()
+        set size of world border of world "SG" to 268
+        console command "genloot"
+        disable PVP in "SG"
+        console command "sgteleport"
+        set {SG::localHealth} to 10
+
+# 设置队伍传送坐标至config
+# 第一个text是地图 第二个text是队伍
+command /sgloc <text> <text>:
+    trigger:
+        load yaml "plugins/FrozenConfig/SG/%arg-1%.yml" as "sgConfig"
+        set yaml value "tp.%arg-2%" from "sgConfig" to player's location
+        save yaml "sgConfig"
+
+# 传送玩家
+# 为直观单独写了个命令
+command /sgteleport:
+    trigger:
+        load yaml "plugins/FrozenConfig/SG/%{SG::localMap}%.yml" as "sgConfig"
+        loop all players:
+            set {_team} to team name of team of loop-player
+            set {_loc} to yaml value "tp.%{_team}%" from "sgConfig"
+            teleport loop-player to {_loc}
+
+# 结束游戏
+# 这里清除了所有相关变量
+# 自动选取上一次的地图
+command /sgstop:
+    trigger:
+        set {SG::switch} to 0
+        set {_i} to 1
+        delete {SG::timer::finalDuel}
+        delete {SG::finalDuel}
+        console command "fx stop"
+        loop {SG::totalPhase} times:
+            delete {SG::shrink::%{_i}%}
+            delete {SG::loot::%{_i}%}
+            delete {SG::PVP::%{_i}%}
+            delete {SG::block::%{_i}%}
+            delete {SG::time::%{_i}%}
+            delete {SG::final::%{_i}%}
+            delete {SG::finalDuel}
+            delete {SG::localPhase}
+            add 1 to {_i}
+        wait 1 tick
+        set size of world border of world "SG" to 268
+        set {_showWinner} to ""
+        loop all players:
+            if loop-player's gamemode is not spectator:
+                set {_prefix} to team prefix of team of loop-player
+                set {_showWinner} to {_showWinner} + "%{_prefix}%" + "%loop-player% "
+                set loop-player's gamemode to spectator
+        broadcast "&e&lWinner: %{_showWinner}%"
+        console command "sgselect %{SG::localMap}%"
+        console command "spcldisplay off"
+        console command "teamglow false"
+        scoreboardDrawSG()
+
+# 战利品生成
+command /genloot:
+    trigger:
+        set {_loot} to loottable from key "sg:loot_chest_normal"
+        loop all blocks within location({SG::totalSize},0,{SG::totalSize},"SG") and location(0 - {SG::totalSize},0,0 - {SG::totalSize},"SG"):
+            if loop-block-1 is diamond block:
+                loop blocks from the loop-block-1 to the block 50 above the loop-block-1:
+                    if loop-block-2 is chest:
+                        clear the inventory of loop-block-2
+                        fill inventory of loop-block-2 from {_loot}
+
+# 记录箱子的坐标xz:在y=0生成钻块
+command /noteloot:
+    trigger:
+        set {_i} to 4
+        loop 46 times:
+            loop all blocks within location({SG::totalSize},{_i},{SG::totalSize},"SG") and location(0 - {SG::totalSize},{_i},0 - {SG::totalSize},"SG"):
+                if loop-block is chest:
+                    set {_x} to loop-block's x-coord
+                    set {_z} to loop-block's z-coord
+                    set block at location({_x},0,{_z},"SG") to diamond block
+            add 1 to {_i}
+            wait 1 tick
